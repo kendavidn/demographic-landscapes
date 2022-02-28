@@ -1,0 +1,72 @@
+---
+title: "Loop to Auto Build Tabs Containing htmlwidgets"
+output: html_document
+---
+```{r setup}
+
+knitr::opts_chunk$set(echo = F, 
+                      message = F, 
+                      warning = F, 
+                      results = "asis")
+```
+
+
+```{r}
+
+library(plotly)
+library(ggplot2)
+library(htmltools)
+library(DataExplorer)
+library(here)
+
+```
+
+
+```{r results='asis', echo = FALSE}
+species_list <- unique(iris$Species) %>% paste()
+species_count <- length(unique(iris$Species))
+species_vec <- 1:species_count
+
+
+petal_plot <- list()
+sepal_plot <- list()
+
+  for (i_species in species_list) {
+
+     p <- iris %>% 
+      filter(Species == i_species) %>% 
+      ggplot(aes(x=Petal.Length, y = Petal.Width)) +
+      geom_point()
+     
+     ggp <- ggplotly(p)
+
+    petal_plot[[i_species]] <- ggp
+    
+    
+     p <- iris %>% 
+      filter(Species == i_species) %>% 
+      ggplot(aes(x=Sepal.Length, y = Sepal.Width)) +
+      geom_point()
+     
+     ggp <- ggplotly(p)
+
+    sepal_plot[[i_species]] <- ggp
+
+  }
+
+```
+
+# Species plots
+
+```{r, child=if (length(species_vec) >= 1) 'zz_1.Rmd'}
+```
+
+```{r, child=if (length(species_vec) >= 2) 'zz_2.Rmd'}
+```
+
+```{r, child=if (length(species_vec) >= 3) 'zz_3.Rmd'}
+```
+
+```{r, child=if (length(species_vec) >= 4) 'zz_4.Rmd'}
+```
+

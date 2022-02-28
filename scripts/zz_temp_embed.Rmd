@@ -1,0 +1,100 @@
+---
+title: "Untitled"
+author: "Kenechukwu Nwosu"
+date: "10/28/2020"
+output:
+  rmarkdown::html_document:
+    theme: cerulean
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F, message = F, warning = F)
+library(pacman)
+
+p_load(char = c("inspectdf",
+                "lubridate",
+                "here",
+                "microbenchmark",
+                "mdhs",
+                "survival",
+                "MortalitySmooth",
+                "reshape2",
+                "viridis",
+                "rayshader",
+                "plotly", 
+                "rdhs",
+                "haven",
+                "countrycode",
+                "janitor",
+                "survey",
+                "purrr",
+                "paletteer",
+                "flexdashboard",
+                "gt",
+                "DT",
+                "highcharter",
+                "av",
+                "rgl", 
+                "htmltools", 
+                "httr",
+                "rvest",
+                "magick",
+                "xml2",
+                "tidyverse",
+                "gridExtra",
+                "rnaturalearth"
+))
+
+params <- data.frame(
+  country_name = "Rwanda",
+  lower_age = 0,
+  upper_age =  49,
+  lower_year =  1995,
+  upper_year = 2005,
+  surveyYearStart = 2010
+  )
+
+```
+
+```{css}
+
+h1, h2, h3 {
+  text-align: center;
+}
+```
+
+## National Mortality Landscape {.tabset}
+
+**Age-specific, year-specific mortality estimates for `r params$country_name` between the years `r params$lower_year` and `r params$upper_year` are shown below. **
+
+
+### 3D (raw estimates)
+
+```{=html}
+
+<!-- <div class="embed-responsive embed-responsive-4by3"> -->
+<!--   <iframe class="embed-responsive-item" src=  "`r paste0(here(), "/results/mp4/PlotNational_",  params$country_name, ".mp4")`" width="700" height="700"  ></iframe> -->
+<!-- </div> -->
+
+
+<video width="700" height="700" controls autoplay loop>
+<source src= "`r paste0(here(), "/results/mp4/PlotNational_",  params$country_name, ".mp4")`" type="video/mp4">
+</video>
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

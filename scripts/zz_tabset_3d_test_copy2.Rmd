@@ -1,0 +1,233 @@
+---
+title: "\\ "
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = F, 
+                      message = F, 
+                      warning = F, 
+                      root.dir = '../'# Normalize path. Thanks Orlando!
+                      )
+
+library(tidyverse)
+library(highcharter)
+library(rayshader)
+library(here)
+
+```
+
+## Malawi
+
+**A short piece of text introducing the data below.**
+
+### 3d chart plotly
+
+```{r height = 400, width = 400}
+library(plotly)
+trace1 <- list(
+  uid = "2a1b33", 
+  type = "surface", 
+  zmax = 3, 
+  zmin = 0.1, 
+  z = matrix(c(2.78, 2.84, 2.89, 2.93, 2.95, 2.98, 2.99, 3, 3, 3, 2.99, 2.98, 2.95, 2.93, 2.89, 2.84, 2.78, 2.73, 2.82, 2.92, 2.95, 2.97, 2.98, 2.99, 3, 3, 3, 2.99, 2.98, 2.97, 2.95, 2.92, 2.82, 2.73, 2.64, 2.81, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2.81, 2.64, 2.5, 2.64, 2.78, 2.82, 2.84, 2.84, 2.83, 2.84, 2.81, 2.84, 2.83, 2.84, 2.84, 2.82, 2.78, 2.64, 2.5, 2.25, 2.34, 2.42, 2.41, 2.43, 2.47, 2.43, 2.43, 2.43, 2.43, 2.43, 2.47, 2.43, 2.41, 2.42, 2.34, 2.25, 2.02, 2.06, 2.08, 2.07, 2.07, 2.07, 2.06, 2.05, 2.05, 2.05, 2.06, 2.07, 2.07, 2.07, 2.08, 2.06, 2.02, 1.72, 1.75, 1.75, 1.69, 1.66, 1.67, 1.65, 1.65, 1.62, 1.65, 1.65, 1.67, 1.66, 1.69, 1.75, 1.75, 1.72, 1.4, 1.4, 1.32, 1.27, 1.26, 1.24, 1.22, 1.22, 1.24, 1.22, 1.22, 1.24, 1.26, 1.27, 1.32, 1.4, 1.4, 1.09, 1, 0.9, 0.82, 0.77, 0.75, 0.75, 0.78, 0.8, 0.78, 0.75, 0.75, 0.77, 0.82, 0.9, 1, 1.09, 0.83, 0.67, 0.44, 0.4, 0.35, 0.32, 0.33, 0.32, 0.3, 0.32, 0.33, 0.32, 0.35, 0.4, 0.44, 0.67, 0.83, 0.59, 0.34, 0.12, 0.12, 0.12, 0.12, 0.12, 0.12, 0.12, 0.12, 0.12, 0.12, 0.12, 0.12, 0.12, 0.34, 0.59, 0.47, 0.32, 0.21, 0.17, 0.15, 0.13, 0.13, 0.13, 0.11, 0.13, 0.13, 0.13, 0.15, 0.17, 0.21, 0.32, 0.47, 0.4, 0.32, 0.24, 0.19, 0.16, 0.15, 0.15, 0.12, 0.1, 0.12, 0.15, 0.15, 0.16, 0.19, 0.24, 0.32, 0.4), nrow=13, ncol=17), 
+  colorscale = list(c(0, "rgb(220, 220, 220)"),list(0.2, "rgb(245, 195, 157)"),list(0.4, "rgb(245, 160, 105)"),list(1, "rgb(178, 10, 28)")), 
+  autocolorscale = TRUE
+)
+
+
+data <- list(trace1)
+
+layout <- list(
+  scene = list(
+    camera = list(
+      up = list(
+        x = 0, 
+        y = 0, 
+        z = 1
+      ), 
+      eye = list(
+        x = 1.25, 
+        y = 1.25, 
+        z = 1.25
+      ), 
+      center = list(
+        x = 0, 
+        y = 0, 
+        z = 0
+      )
+    ), 
+    aspectratio = list(
+      x = 1, 
+      y = 1, 
+      z = 1
+    )
+  ), 
+  title = "3D Heatmap", 
+  width = 1079, 
+  height = 547, 
+  autosize = TRUE, 
+  showlegend = FALSE
+)
+
+
+p <- plot_ly( height = 400, width = 400) %>% 
+  layout(autosize = F)
+p <- add_trace(p, uid=trace1$uid, type=trace1$type, zmax=trace1$zmax, zmin=trace1$zmin, z=trace1$z, colorscale=trace1$colorscale, autocolorscale=trace1$autocolorscale)
+p <- layout(p, scene=layout$scene, title=layout$title, width=layout$width, height=layout$height, autosize=layout$autosize, showlegend=layout$showlegend)
+p
+
+```
+
+### Turn regular heatmap into plotly plot
+
+```{r}
+
+mortmat_raw <- readRDS(here("results/malawi_matrix_raw.RDS"))
+# raw 
+rowcount <- length(unique(mortmat_raw$ages)) 
+colcount <- length(unique(mortmat_raw$years)) 
+
+mortmat_raw$log_death_prob[which(mortmat_raw$log_death_prob == -Inf) ] <- min((mortmat_raw$log_death_prob[which(mortmat_raw$log_death_prob != -Inf)]))
+
+zvals_raw <- matrix(mortmat_raw$log_death_prob, ncol = colcount, nrow = rowcount)
+          
+plot_ly(x = min(mortmat_raw$years): max(mortmat_raw$years) , 
+        y =  min(mortmat_raw$ages): max(mortmat_raw$ages), 
+        z = zvals_raw) %>% add_surface()
+
+
+mortmat_smooth <- readRDS(here("results/malawi_matrix_smooth.RDS"))
+# smoothed
+rowcount <- length(unique(mortmat_smooth$ages)) 
+colcount <- length(unique(mortmat_smooth$years)) 
+
+# convert from ln to log
+mortmat_smooth$lmx <- log10(exp(mortmat_smooth$lmx))
+
+zvals <- matrix(mortmat_smooth$lmx, ncol = colcount, nrow = rowcount)
+          
+plot_ly(x = min(mortmat_smooth$years): max(mortmat_smooth$years) , 
+        y =  min(mortmat_smooth$ages): max(mortmat_smooth$ages), 
+        z = zvals) %>% add_surface() %>% 
+       add_surface(z = ~ zvals_raw, opacity = 0.98, colorscale = "Jet") %>% 
+  layout(
+    scene = list(
+      aspectratio = list(x = 1, y = 1, z = 0.3)
+    )
+  )
+
+```
+
+### 3D chart rayshader movie
+
+```{r test3d, width = "50%"}
+
+filename_movie = "/Users/kenwosu/Desktop/mortDHS/results/mp4/rayshadertest.mp4"
+
+#By default, the function produces a 12 second orbit at 30 frames per second, at 30 degrees azimuth.
+
+montereybay %>%
+ sphere_shade(texture="imhof1") %>%
+ plot_3d(montereybay, zscale=50, water = TRUE, watercolor="imhof1", 
+         waterlinecolor="white", waterlinealpha=0.5, max_error = 0.1, triangulate = T)
+#Un-comment the following to run:
+render_movie(filename = filename_movie)
+```
+
+```{=html}
+<video width="320" height="240" controls>
+
+<source src= "/Users/kenwosu/Desktop/mortDHS/results/mp4/rayshadertest.mp4" type="video/mp4">
+
+</video>
+```
+
+```{r test3d2, width = "50%"}
+
+rgl::rgl.close()
+
+sprays_plot <- 
+  OrchardSprays %>% 
+  ggplot() + 
+  geom_tile(aes(x = rowpos, y = colpos, fill = -decrease )) 
+
+ray_3d_test <- plot_gg(sprays_plot, height_aes = "fill", preview = F, triangulate = T)
+
+rgl::rglwidget()
+
+```
+
+### Filter chart
+
+```{r out.width='80%', out.height='80%'}
+
+library(tidyverse)
+library(plotly)
+library(gapminder)
+library(flexdashboard)
+library(DT)
+library(rnaturalearth)
+library(paletteer)
+
+gapminder_highlighted <- 
+  highlight_key(gapminder[1:408,], ~country, "Select a country")
+
+gapminder_ggplot <- 
+  gapminder_highlighted %>% 
+  ggplot(aes(x = year, y = lifeExp, group = country), alpha = 0.2) + 
+  geom_line()
+
+gapminder_plotly <- ggplotly(gapminder_ggplot,  height = 500, width = 1000)%>% 
+  layout(autosize = T)
+
+highlight(gapminder_plotly, dynamic = T, selectize = T, persistent = T)
+
+
+```
+
+### Table
+
+```{r out.width='80%', out.height='80%'}
+DT::datatable(gapminder[1:408,])
+```
+
+### Map
+
+```{r width=1000, height=800}
+africa_map <- rnaturalearth::ne_countries(continent = "Africa", returnclass = "sf")
+
+map_gg <- 
+  ggplot(africa_map) +
+  geom_sf(aes(fill = pop_est)) + 
+  scale_fill_paletteer_c("viridis::inferno")
+
+ggplotly(map_gg,  height = 800 , width = 1000) %>% 
+  layout(autosize = T) %>% 
+  layout(xaxis = list(autorange = TRUE),
+         yaxis = list(autorange = TRUE))
+
+```
+
+### Source
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+
+Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo. Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt. Neque porro quisquam est, qui dolorem ipsum quia dolor sit amet, consectetur, adipisci velit, sed quia non numquam eius modi tempora incidunt ut labore et dolore magnam aliquam quaerat voluptatem. Ut enim ad minima veniam, quis nostrum exercitationem ullam corporis suscipit laboriosam, nisi ut aliquid ex ea commodi consequatur? Quis autem vel eum iure reprehenderit qui in ea voluptate velit esse quam nihil molestiae consequatur, vel illum qui dolorem eum fugiat quo voluptas nulla pariatur?
+
+Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo. Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt. Neque porro quisquam est, qui dolorem ipsum quia dolor sit amet, consectetur, adipisci velit, sed quia non numquam eius modi tempora incidunt ut labore et dolore magnam aliquam quaerat voluptatem. Ut enim ad minima veniam, quis nostrum exercitationem ullam corporis suscipit laboriosam, nisi ut aliquid ex ea commodi consequatur? Quis autem vel eum iure reprehenderit qui in ea voluptate velit esse quam nihil molestiae consequatur, vel illum qui dolorem eum fugiat quo voluptas nulla pariatur?
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+
+Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo. Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt. Neque porro quisquam est, qui dolorem ipsum quia dolor sit amet, consectetur, adipisci velit, sed quia non numquam eius modi tempora incidunt ut labore et dolore magnam aliquam quaerat voluptatem. Ut enim ad minima veniam, quis nostrum exercitationem ullam corporis suscipit laboriosam, nisi ut aliquid ex ea commodi consequatur? Quis autem vel eum iure reprehenderit qui in ea voluptate velit esse quam nihil molestiae consequatur, vel illum qui dolorem eum fugiat quo voluptas nulla pariatur?
+
+Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo. Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt. Neque porro quisquam est, qui dolorem ipsum quia dolor sit amet, consectetur, adipisci velit, sed quia non numquam eius modi tempora incidunt ut labore et dolore magnam aliquam quaerat voluptatem. Ut enim ad minima veniam, quis nostrum exercitationem ullam corporis suscipit laboriosam, nisi ut aliquid ex ea commodi consequatur? Quis autem vel eum iure reprehenderit qui in ea voluptate velit esse quam nihil molestiae consequatur, vel illum qui dolorem eum fugiat quo voluptas nulla pariatur?
+
+Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo. Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt. Neque porro quisquam est, qui dolorem ipsum quia dolor sit amet, consectetur, adipisci velit, sed quia non numquam eius modi tempora incidunt ut labore et dolore magnam aliquam quaerat voluptatem. Ut enim ad minima veniam, quis nostrum exercitationem ullam corporis suscipit laboriosam, nisi ut aliquid ex ea commodi consequatur? Quis autem vel eum iure reprehenderit qui in ea voluptate velit esse quam nihil molestiae consequatur, vel illum qui dolorem eum fugiat quo voluptas nulla pariatur?
+
+Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo. Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt. Neque porro quisquam est, qui dolorem ipsum quia dolor sit amet, consectetur, adipisci velit, sed quia non numquam eius modi tempora incidunt ut labore et dolore magnam aliquam quaerat voluptatem. Ut enim ad minima veniam, quis nostrum exercitationem ullam corporis suscipit laboriosam, nisi ut aliquid ex ea commodi consequatur? Quis autem vel eum iure reprehenderit qui in ea voluptate velit esse quam nihil molestiae consequatur, vel illum qui dolorem eum fugiat quo voluptas nulla pariatur?
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+
+Some possibly hidden text.

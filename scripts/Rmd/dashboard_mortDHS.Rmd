@@ -1,0 +1,1275 @@
+---
+output:
+  rmarkdown::html_document:
+    theme: cerulean
+    toc: true
+    toc_depth: 2
+    toc_float: true
+params: 
+  country_code_DHS: "KM"
+  lower_age: 0
+  upper_age: 49
+  surveyYearStart: 1980
+# title: "`r params$country_name`"
+title: "&nbsp;"
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r SetParamsManually, echo = F}
+
+surveyYearStart <- params$surveyYearStart
+upper_age <- params$upper_age
+lower_age <- params$lower_age
+country_code_DHS <- params$country_code_DHS
+
+
+# Build dictionary to convert from DHS country code to ISO country code
+dhs_id <- rdhs::dhs_countries(returnFields=c("CountryName", "DHS_CountryCode"))
+DHStoISO <- 
+  countrycode::countrycode(dhs_id$CountryName, 
+                         origin =  "country.name", 
+                         destination =  "iso2c")
+names(DHStoISO) <- dhs_id$DHS_CountryCode
+
+
+# Convert individual country code
+country_code_ISO2 <- DHStoISO[[country_code_DHS]]
+
+
+country_name <- countrycode::countrycode(country_code_ISO2, origin =  "iso2c", destination =  "country.name")
+
+
+
+
+
+
+
+# # run_type <- "rmd"
+# run_type <- "manual"
+# 
+# if (run_type == "rmd"){
+# params1 <- params
+# }
+# 
+# 
+# if (run_type == "manual"){
+# params1 <- data.frame(
+#   country_code_DHS = "MW",
+#   lower_age =  0,
+#   upper_age = 49,
+#   surveyYearStart = 1980
+#   )
+# }
+
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F, message = F, warning = F, fig.width = 6, fig.height = 6, fig.align = "center", 
+                      root.dir = '../')
+```
+
+```{r loadPackages}
+#~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~ Import packages----
+#~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+library(pacman)
+
+p_load(char = c("inspectdf",
+                "lubridate",
+                "here",
+                "mdhs", # install.packages(here('mdhs_0.1.0.tar.gz'), repos = NULL, type="source")
+                "survival",
+                "MortalitySmooth",
+                "reshape2",
+                "viridis",
+                "rayshader",
+                "plotly", 
+                "rdhs",
+                "haven",
+                "countrycode",
+                "purrr",
+                "paletteer",
+                "gt",
+                "DT",
+                "highcharter",
+                "av",
+                "htmltools", 
+                "janitor",
+                "httr",
+                "rvest",
+                "xml2",
+                "flagon", # remotes::install_github("coolbutuseless/flagon")
+                "magick",
+                "gridExtra",
+                "grid",
+                "geojsonio",
+                "geojsonlint",
+                "leaflet",
+                "leaftime",
+                "sjPlot",
+                "knitr",
+                "stringi",
+                "tidyverse",
+                "rnaturalearth",
+                "RColorBrewer",
+                "reactable"
+))
+
+## archived packages
+if(!require("MortalitySmooth")){
+  pacman::p_load("devtools")
+  if(!require("svcm")){
+  devtools::install_version("svcm", version = "0.1.2", repos = "http://cran.us.r-project.org")
+    }
+  devtools::install_version("MortalitySmooth", version = "2.3.4", repos = "http://cran.us.r-project.org")
+  pacman::p_load(char = c("svcm", "MortalitySmooth"))
+  }
+
+
+#~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~ Set theme ----
+#~~~~~~~~~~~~~~~~~~~~~~~~
+source(here("scripts/ggplot_theme.R" ))
+
+options(highcharter.theme = hc_theme_hcrt())
+
+```
+
+```{css}
+
+h1, h2 {
+  text-align: center;
+}
+
+# .fixed-height .tab-content {
+#   height: 400px;
+#   width: 400px;
+# }
+
+# body {
+#   background-color: #F7F7F7
+# }
+```
+
+```{r MakeCountryHeader, fig.height=3, fig.align='center',  results="hide"}
+
+# Clean country names. 
+# Needed to harmonize with wikipedia orthographic URLs
+country_name_xml <- 
+  str_replace_all(country_name, " ", "_" ) %>%
+  as_tibble() %>% 
+  bind_cols(two_letr = country_code_ISO2) %>% 
+  mutate(wiki_name = case_when(two_letr == "CD" ~ "Democratic_Republic_of_the_Congo", 
+                               two_letr == "CI" ~ "Côte_d%27Ivoire",
+                               two_letr == "CG" ~ "Republic_of_the_Congo",
+                               TRUE ~ country_name)) %>% 
+  pull(wiki_name)
+
+# Pull orthographic projection
+ortho_img <- 
+  try(
+  glue::glue(
+  "https://commons.wikimedia.org/wiki/File:{country_name_xml}_(orthographic_projection).svg") %>%
+  read_html() %>%
+  html_nodes("img") %>%
+  html_attr("src") %>%
+  as.data.frame() %>%
+  transform(`.` = as.character(`.`)) %>%
+  filter(grepl("orthographic", ., perl = TRUE)) %>%
+  slice(1) %>%
+  pull() %>% 
+  magick::image_read() %>% 
+  rasterGrob()
+  )
+
+# Pull regular country map in case orthographic proj not found
+country_img <- 
+  try(
+  ne_countries(continent = "africa", returnclass = "sf") %>%
+  mutate(selected = ifelse(iso_a2 == country_code_ISO2, "fill", NA)) %>%
+  ggplot() +
+  geom_sf(aes(fill = selected), color = "gray80") +
+  scale_fill_manual(values = "darkgreen",   na.value = "gray80") +
+  theme_void() +
+  theme(legend.position = "none")
+)
+
+# if ortho wasn't found, replace with regular map
+if (is.character(ortho_img)) {
+ortho_img <- country_img
+}
+
+# if still nothing, empty rectangle
+if (is.character(ortho_img)) {
+ortho_img <- rectGrob(gp = gpar( col = "transparent"))
+}
+
+# grab flag
+flag_img <- 
+  try(
+  flagon::flags(country_code_ISO2,filetype = "png") %>% 
+  magick::image_read() %>% 
+  rasterGrob()
+  )
+
+# if flag_img missing, empty rect
+if (is.character(flag_img)) {
+flag_img <- rectGrob(gp = gpar( col = "transparent"))
+}
+
+# Country name
+country_text <- textGrob(str_wrap(country_name, 10),
+                         gp = gpar(fontsize = 22, col = '#317EAC', fontface = 'bold')
+                         )
+
+# Paste
+grid.arrange(ortho_img, country_text,  flag_img, ncol = 3)
+invisible(dev.off())
+
+```
+
+```{r downloadSurveys, results="hide"}
+#~~~~~~~~~~~~~~~~~~~~~~
+#~  Download data ----
+#~~~~~~~~~~~~~~~~~~~~~~
+# 
+#set up your credentials!!!
+## Not sure about the cache and config path thing. I want the entire project to be fully portable
+# set_rdhs_config(email = "kendavidn@gmail.com" ,
+#                 project = "The effect of birth spacing on maternal and child health outcomes in SSA"
+#                 # ,
+#                 # uncomment the below when setting up on Windows
+#                # config_path = '~/.rdhs.json',
+#                #  cache_path = 'C:/Users/User/Desktop/rdhs_cache'
+# 
+#                 )
+
+
+## select datasetsØ
+dhs_datasets_df <-
+  invisible(
+  dhs_datasets(countryIds = country_code_DHS, fileFormat = "flat", 
+               fileType = "IR", surveyType = "DHS",
+               surveyYearStart = surveyYearStart ## sibling questions were introduced in phase 2, 1990s
+               ))
+
+## download datasets (store them in cache)
+dhs_downloads_cache <- invisible(get_datasets(dhs_datasets_df$FileName))
+
+## pre-define columns to keep
+sib_vars <- paste0("mm", c(1, 2, 4, 8))
+sib_nums <- str_pad(1:20, 2, pad = "0")
+sib_cols <- paste(rep(sib_vars, each = length(sib_nums)), sib_nums, sep = "_")
+individual_cols <- c("caseid", paste0("v", str_pad(0:25, 3, pad = "0")))
+select_cols <- c(individual_cols, sib_cols)
+
+
+#for (country_code_DHS in countrycodes) {
+  
+  # subset the list of downloads for given country
+  # this line, as well as the for loop above, is here in case I want to work with multiple countries at a time
+  download_sub <- dhs_downloads_cache[which(str_detect(toupper(names(dhs_downloads_cache)), country_code_DHS))]
+  
+  # initialize list
+  country_svy_list <- list()
+  
+  
+  ### loop over each survey year for that country
+  for (i in names(download_sub)) {
+    
+    countryfile <- 
+      readRDS(download_sub[[i]]) %>%
+      as_tibble() %>%
+      select(any_of(select_cols)) %>%
+      haven::as_factor() %>% # converts labelled columns to factors (number keys replaced w. text)
+      # then convert EVERYTHING to characters. Needed to allow binding of factor cols with different levels
+      # or factor and integer columns. (different encoding from survey year to survey year)
+      mutate(across(.cols = everything(),
+                    .fns = as.character)) %>%
+      # unique identifier for each survey. Paste together survey phase and last year of survey
+      mutate(surveyid = paste(v000,
+                              (max(v007, na.rm = T) %>% str_sub(-2, -1)),
+                              sep = "_")) %>%
+      relocate(surveyid, .after = "v000") %>%
+      mutate(across(.fns = str_trim ))
+    
+    # append each year to list
+    country_svy_list <- append(country_svy_list, list(countryfile))
+  }
+  
+  # after list is filled by loop, set list element names (list elements are dfs, one per survey)
+  country_svy_list <- 
+    country_svy_list %>% 
+    set_names(map_chr(country_svy_list, function(x) x %>% .[1,"surveyid"] %>% pull()))
+  
+  # bind output list into a single df
+  bound_dhs <- bind_rows(country_svy_list) %>% type_convert()
+
+  ## extract country's name from the dataframe (first list element, first row, column v000, first two letters)
+  # country_2dig <- country_svy_list[[1]][1, "v000"] %>% str_sub(1, 2)
+  
+  ## assign country's name as the new name for the bound dataframe
+  # assign(country_2dig, bound_dhs, envir = globalenv())
+  
+  # assign(country_code_DHS, bound_dhs, envir = globalenv())
+  
+  ## delete intermediate objects
+  rm(list = c("download_sub",
+              "countryfile"
+              # "bound_dhs"
+              #,"list_dhs"
+              ))
+  
+#}
+
+### Define params
+  
+lower_year <- min(as.numeric(dhs_datasets_df$SurveyYear)) - 5
+upper_year <- max(as.numeric(dhs_datasets_df$SurveyYear)) - 2
+  
+
+```
+
+```{r CreatePlotsToShowRegions}
+#~~ Figure out region mapping problems ---------------------------
+
+# Check uncleaned regions
+
+regions_sum <- 
+  bound_dhs %>% 
+  group_by(surveyid, v024) %>% 
+  mutate(v024 = stringi::stri_trans_general(v024, "latin-ascii")) %>% 
+  summarise(count = n()) 
+
+nb.cols<- length(unique(regions_sum$v024))
+mycolors <- colorRampPalette(brewer.pal(8, "Set2"))(nb.cols)
+
+regions_plot <- 
+  regions_sum %>% 
+  ggplot() + 
+  geom_bar(aes(x = surveyid, y = count, fill = v024), stat = "identity") +
+  scale_fill_manual(values = mycolors)
+
+raw_regions_plot <- ggplotly(regions_plot)
+
+# Clean then check cleaned regions
+
+source(here("scripts/remap_regions_list.R"))
+
+regions_sum <- 
+  bound_dhs %>% 
+  mutate(v024 = stringi::stri_trans_general(v024, "latin-ascii")) %>% 
+  remap_regions[[country_code_DHS]]() %>% 
+  group_by(surveyid, region) %>% 
+  summarise(count = n()) 
+
+nb.cols<- length(unique(regions_sum$region))
+
+if (nb.cols > 12){
+region_colors <- colorRampPalette(paletteer_d("ggthemes::calc") %>% as.character() %>% rev())(nb.cols)
+} else {
+  region_colors <- paletteer_d("ggthemes::calc") %>% as.character() %>% rev()
+}
+  
+regions_plot <- 
+  regions_sum %>% 
+  ggplot() + 
+  geom_bar(aes(x = surveyid, y = count, fill = region), stat = "identity") +
+  scale_fill_manual(values = region_colors)
+
+remapped_regions_plot <- ggplotly(regions_plot)
+
+
+regions_plot_present <- 
+  regions_sum %>% 
+  filter(region != "Dropped_region") %>% 
+  hchart("column",  hcaes(x = surveyid, y = count, group = region)) %>%
+  hc_plotOptions(column = list(stacking = "normal")) %>% 
+    hc_yAxis(title = list(text = "No. of Respondents")) %>% 
+    hc_xAxis(title = list(text = "Survey Phase and Year")) %>%
+    hc_legend(layout = "proximate",
+              align = "right") %>%
+    hc_colors(region_colors) %>%
+    hc_title(text = paste0("Respondents per region for DHS Surveys used in regional estimates"),
+             align = "left") %>%
+    hc_chart(backgroundColor = "#ebebeb") %>% 
+      hc_exporting(enabled = TRUE,
+                 filename = "Demography_Landscapes_Plot")
+
+```
+
+```{r preProcessWithmdhs}
+
+#~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~ mdhs preProcessing----
+#~~~~~~~~~~~~~~~~~~~~~~~~
+# load data
+# load(here("/data/malawi.RData"))
+
+
+# make sure case IDs from svy to svy are unique
+bound_dhs <- 
+  bound_dhs %>% 
+  mutate(caseid = paste(surveyid, caseid, sep = "_")) #  %>% 
+  # sample_n(800)
+  
+
+# reshape to long
+sib_long. <- mdhs::mdhs_reshape(data = bound_dhs, sib_cols = c(1,2,4,8)) 
+# add in interview date variable. NEEDED FOR MORTALITY CALC
+sib_long <- mdhs::mdhs_merge(sib_long., bound_dhs, respondent_vars = c(individual_cols, "surveyid") ) 
+# Calculate observation time
+sib_long <- 
+  sib_long %>% 
+  mutate(mm2 = case_when( mm2 == "alive" ~ 1,
+                          mm2 == "dead" ~ 0,
+                          TRUE ~ NA_real_)) %>% 
+  mutate(mm4 = as.numeric(mm4)) %>% 
+  mutate(mm8 = as.numeric(mm8)) %>% 
+  as_tibble() %>% 
+  mutate(sex = case_when(mm1 == "male" ~ "male", 
+                         mm1 == "female" ~ "female",
+                         TRUE ~ NA_character_), 
+         sex = as.factor(sex))
+
+sib_long$obs_time <- mdhs::mdhs_obs_time(sib_long)
+
+  
+
+```
+
+```{r CalculateNationalMortality}
+#~~~ Import functions ----------------------------
+
+source(here("functions/key_functions_rework.R" ))
+
+#~~~ deaths and exposure  --------------------
+
+deaths_national_wide <- 
+  sib_long %>% 
+  age_year_deaths(lower_age = lower_age, upper_age = upper_age, 
+                  lower_year = lower_year, upper_year = upper_year) %>% 
+  t()
+
+deaths_national_long <- 
+  deaths_national_wide %>% 
+  melt() %>% 
+  rename(deaths = value, Age = Var1, Year = Var2) 
+
+
+
+exposure_national_wide <-
+  sib_long %>% 
+  age_year_exposure(lower_age = lower_age, upper_age = upper_age, 
+                  lower_year = lower_year, upper_year = upper_year)  %>% 
+  t()
+
+exposure_national_long <-
+  exposure_national_wide %>% 
+  melt() %>% 
+  rename(exposure = value, Age = Var1, Year = Var2)
+```
+
+```{r SmoothNationalMortalityEstimates}
+#~~~ smoothed estimates --------------------
+
+# set weights to 0 if exposure is 0
+weights_wide <- exposure_national_long %>% 
+  mutate(weights = ifelse(exposure == 0, 0, 1)) %>% 
+  select(weights, Age,  Year) %>% 
+  pivot_wider(id_cols = Age, names_from = Year, values_from = weights) %>% 
+  select(-Age) %>% 
+  as.matrix()
+
+
+# fit with BIC
+fitBIC <-
+  Mort2Dsmooth(x = c(lower_age:upper_age),
+               y = c(lower_year:upper_year),
+               Z = deaths_national_wide,
+               offset = log(exposure_national_wide), W = weights_wide)
+
+
+
+
+# empty df
+smoothed_estimates  <-
+  expand.grid(list(Age= c(lower_age : upper_age),
+                   Year=c(lower_year : upper_year))) %>%
+  mutate( ln_death_prob_smooth = c(fitBIC$logmortality),
+          log_death_prob_smooth = log10(exp(ln_death_prob_smooth))) %>%
+  as_tibble()
+```
+
+```{r CombineRawAndSmoothedEstimates}
+#~~~ Combine --------------------
+
+mort_national <- 
+  deaths_national_long %>%
+  left_join(exposure_national_long) %>%
+  left_join(smoothed_estimates) %>% 
+  group_by(Age, Year) %>% 
+  # death probability
+  mutate(deaths = sum(deaths), 
+         exposure = sum(exposure)) %>%
+  ungroup() %>% 
+  mutate(death_prob = deaths/exposure,
+         log_death_prob = log10(death_prob)) %>% 
+  # percentage
+  mutate(death_prob_pct = 100 * death_prob) %>%
+  # Cells with zero deaths cant be log transformed. Solution: set to minimum of the non-zeros
+  # while still using the zeros (or NAs) for the hover labels. 
+  mutate(death_prob_pct_above0 = ifelse(death_prob_pct > 0, death_prob_pct, NA)) %>% 
+  mutate(death_prob_pct_filled = ifelse(death_prob_pct == 0,
+                                 min(death_prob_pct_above0, na.rm = T),
+                                 death_prob_pct)) %>% 
+  select(-death_prob_pct_above0) %>% 
+  # fractions
+  mutate(death_prob_frac = 1 / death_prob,
+         death_prob_frac = paste("1 in" , round(death_prob_frac, 0)), 
+         death_prob_frac = ifelse((death_prob_frac == "1 in Inf"), "NA", death_prob_frac)) %>%
+  # REPEAT THE ABOVE, but for the smoothed estimates
+  # percentage
+  mutate(death_prob_smooth = exp(ln_death_prob_smooth),
+         death_prob_pct_smooth = 100 * death_prob_smooth,
+         death_prob_pct_above0_smooth = ifelse(death_prob_pct_smooth > 0, death_prob_pct_smooth, NA),
+         death_prob_pct_filled_smooth = ifelse(death_prob_pct_smooth == 0,
+                                 min(death_prob_pct_above0_smooth, na.rm = T),
+                                 death_prob_pct_smooth)) %>%
+  select(-death_prob_pct_above0_smooth) %>%
+  # fractions
+  mutate(death_prob_frac_smooth = 1 / death_prob_smooth,
+         death_prob_frac_smooth = paste("1 in" , round(death_prob_frac_smooth, 0)),
+         death_prob_frac_smooth = ifelse((death_prob_frac_smooth == "1 in Inf"), "NA", death_prob_frac_smooth))
+```
+
+```{r CreateNationalMortalityVideo}
+#~~~ Plot  --------------------
+
+
+mort_plot_national <-
+  mort_national %>%
+  ggplot(aes(x = Year , y = Age)) +
+  geom_tile(aes(fill = log_death_prob)) +
+  scale_fill_viridis(option = "A",
+                     limits = c(-3.5, -0.5),
+                     breaks = c(-1, -2, -3, -4),
+                     labels = c("1/10", "1/100", "1/1,000", "1/10,000")) +
+  theme_lexis +
+  labs(title = paste0("Mortality Lexis Surface for ", country_name),
+       subtitle = paste0("Individuals aged ",
+                         lower_age, " to ",
+                         upper_age, " in the years ",
+                         lower_year, " to ",
+                         upper_year),
+       fill = "Probability\nof death\nthat year",
+       x = "Year",
+       y = "Age",
+       caption = "Source: Demographic and Health Surveys") +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0))
+
+
+#~~~ Video  --------------------
+
+plot_gg(mort_plot_national,
+        height = 5, width = 6,
+        windowsize = c(1000, 1000),
+        multicore = TRUE)
+
+
+
+#parameters for 360 positions
+phivechalf = 30 + 60 * 1/(1 + exp(seq(-7, 20, length.out = 180)/2))
+phivecfull = c(phivechalf, rev(phivechalf))
+thetavec = 0 + 60 * sin(seq(0,359,length.out = 360) * pi/180)
+# lower base number is deeper zoom
+zoomvec = 0.55 + 0.2 * 1/(1 + exp(seq(-5, 20, length.out = 180)))
+zoomvecfull = c(zoomvec, rev(zoomvec))
+
+# render destination
+filename_movie <- paste0(here(), "/results/mp4/PlotNational_",  country_name, ".mp4")
+
+# render
+invisible(render_movie(filename = filename_movie,
+             type = "custom",
+             frames = 360,
+             fps = 24,
+             phi = phivecfull,
+             zoom = zoomvecfull,
+             theta = thetavec))
+
+# close viewing device
+rgl::rgl.close()
+
+```
+
+# NATIONAL {.tabset}
+
+**Age-specific, year-specific mortality estimates for `r country_name` between the years `r lower_year` and `r upper_year` are shown below.**
+
+## 3D (raw estimates)
+
+```{=html}
+<!-- <div class="embed-responsive embed-responsive-4by3"> -->
+<!--   <iframe class="embed-responsive-item" src=  "`r paste0(here(), "/results/mp4/PlotNational_",  country_name, ".mp4")`" width="700" height="700"  ></iframe> -->
+<!-- </div> -->
+
+
+<video width="700" height="700" controls autoplay loop>
+<source src= "`r paste0(here(), "/results/mp4/PlotNational_",  country_name, ".mp4")`" type="video/mp4">
+</video>
+```
+## 2D (raw estimates)
+
+```{r fig.height=6, fig.width=6}
+
+
+x <- c("Age:", "Year:", "Deaths:", "Exposure:", "Prob. of Death:", "(as fraction):")
+y <- c("{point.Age:.0f}", "{point.Year:.0f}", "{point.deaths:.0f}", "{point.exposure:.0f}", "{point.death_prob_pct:.2f}%", "{point.death_prob_frac}"   )
+
+tltip <- tooltip_table(x, y)
+
+mort_national %>%
+  hchart("heatmap", hcaes(x = Year, y = Age, value = death_prob_pct_filled)) %>%
+  hc_colorAxis(stops = color_stops(10, viridisLite::magma(n = 12, end = 0.84)),
+               type = "logarithmic") %>%
+  hc_legend(layout = "horizontal",
+            verticalAlign = "top",
+            align = "left") %>%
+  hc_tooltip(useHTML = TRUE,
+             headerFormat = "",
+             pointFormat = tltip) %>%
+  hc_xAxis(labels = list(rotation = -45)) %>%
+  hc_title(text = paste0("Mortality Lexis Surface for ", country_name),
+           align = "left") %>%
+  hc_subtitle(text = "% probability of death at that age in that year",
+              align = "left") %>% 
+  hc_chart(backgroundColor = "#E0E0E0")  %>% 
+  hc_exporting(enabled = TRUE,
+               filename = "Demography_Landscapes_Plot")
+
+```
+
+## 2D (spline-smoothed)
+
+```{r fig.height=6, fig.width=6}
+
+x <- c("Age:", "Year:", "Deaths:", "Exposure:", "Prob. of Death:", "(as fraction):")
+y <- c("{point.Age:.0f}", "{point.Year:.0f}", "{point.deaths:.0f}", "{point.exposure:.0f}", "{point.death_prob_pct_smooth:.2f}%", "{point.death_prob_frac_smooth}"   )
+
+tltip <- tooltip_table(x, y)
+
+mort_national %>%
+  hchart("heatmap", hcaes(x = Year, y = Age, value = death_prob_pct_filled_smooth)) %>%
+  hc_colorAxis(stops = color_stops(10, viridisLite::magma(n = 12, end = 0.84)),
+               type = "logarithmic") %>%
+  hc_legend(layout = "horizontal",
+            verticalAlign = "top",
+            align = "left") %>%
+  hc_tooltip(useHTML = TRUE,
+             headerFormat = "",
+             pointFormat = tltip) %>%
+  hc_xAxis(labels = list(rotation = -45)) %>%
+  hc_title(text = paste0("Mortality Lexis Surface for ", country_name, ", (smoothed)"),
+           align = "left") %>%
+  hc_subtitle(text = "% probability of death at that age in that year",
+              align = "left") %>%
+  hc_chart(backgroundColor = "#E0E0E0") %>% 
+  hc_exporting(enabled = TRUE,
+               filename = "Demography_Landscapes_Plot")
+
+```
+
+## Data Table
+
+```{r fig.height=6, fig.width=6}
+
+mort_national %>% 
+  mutate(death_prob_pct = round(death_prob_pct, 2) ,
+         death_prob_pct_smooth = round(death_prob_pct_smooth), 2) %>% 
+  select(Age, Year, Deaths = deaths, `Exposure (person-years)` = exposure, 
+         `Death Prob. Percent` = death_prob_pct, 
+         `Death Prob. Fraction` = death_prob_frac,
+         `Death Prob. Percent (Smoothed)` = death_prob_pct_smooth,
+         `Death Prob. Fraction (Smoothed)` = death_prob_frac_smooth) %>% 
+  DT::datatable(extensions = c('Buttons'),
+                options = list(dom = "Bfrtip",
+                               buttons = c('excel', 'print'),
+                               pageLength = 10,
+                               initComplete = JS(
+                                 "function(settings, json) {",
+                                 "$(this.api().table().header()).css({'background-color': 'ebebeb', 'color': 'black'});",
+                                 "}"
+                               )), 
+                filter = "top")
+```
+
+## Data Sources
+
+**Data for these estimates is based on the following DHS surveys for `r country_name`:**
+
+```{r NationalDataSources, fig.height=6, fig.width=6}
+
+resp_count <- 
+  bound_dhs %>% 
+  group_by(surveyid) %>% 
+  summarise(resp_count = length(unique(caseid)))
+
+sib_count <- 
+  sib_long %>% 
+  group_by(surveyid) %>% 
+  summarise(sib_count = length(unique(paste0(caseid, sib_id))))
+
+dead_count <- 
+  sib_long %>%
+  filter(mm2 == 0) %>%
+  group_by(surveyid) %>%
+  summarise(dead_count = length(unique(paste0(caseid, sib_id))))
+
+resp_count %>% 
+  left_join(sib_count) %>% 
+  left_join(dead_count) %>% 
+  separate(col = 1, into = c("survey","year"), sep = "_") %>% 
+  mutate(phase = str_extract(survey, "[:digit:]"), 
+         year = as.Date(year, format = "%y"), 
+         year = year(year)) %>% 
+  select(`DHS Phase` = phase, 
+         Year = year,
+         `No. of Survey Respondents` = resp_count, 
+         `No. of Respondents' Siblings` = sib_count, 
+         `No. of Deaths Among Siblings` = dead_count) %>% 
+  DT::datatable(extensions = c('Buttons'),
+                options = list(dom = "t",
+                               buttons = c('excel', 'print'),
+                               pageLength = 10,
+                               initComplete = JS(
+                                 "function(settings, json) {",
+                                 "$(this.api().table().header()).css({'background-color': 'ebebeb', 'color': 'black'});",
+                                 "}"
+                               )))  
+
+
+```
+
+<!-------------------------------------------------------------->
+
+<!-------------- Regional and age group comparisons ------------->
+
+<!-------------------------------------------------------------->
+
+```{r CalculateRegionalMortalityPerAgeGroup}
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#              SPLIT PROGRAMMATICALLY         ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+#~~~ deaths and exposure columns --------------------
+
+deaths <- 
+  sib_long %>% 
+  remap_regions[[country_code_DHS]]() %>% 
+  filter(!is.na(region) & region != "Dropped_region" ) %>% 
+  split(.$region) %>% 
+  map(~ age_year_deaths(.x,lower_age = lower_age, upper_age = upper_age, 
+                  lower_year = lower_year, upper_year = upper_year)) %>% 
+  map(~ t(.x) ) %>% 
+  map(~ melt(.x)) %>% 
+  map(~ rename(.x, deaths = value, age = Var1, year = Var2) ) %>% 
+  bind_rows(.id = "region")
+
+exposure <- 
+  sib_long %>% 
+  remap_regions[[country_code_DHS]]() %>% 
+  filter(!is.na(region) & region != "Dropped_region" ) %>% 
+  split(.$region) %>% 
+  map(~ age_year_exposure(.x, lower_age = lower_age, upper_age = upper_age, 
+                  lower_year = lower_year, upper_year = upper_year)) %>% 
+  map(~ t(.x) ) %>% 
+  map(~ melt(.x)) %>% 
+  map(~ rename(.x, exposure = value, age = Var1, year = Var2) ) %>% 
+  bind_rows(.id = "region")
+
+
+#~~ Summarise per region and age group ---------------------------
+
+mort_region_age_cat <- 
+  deaths %>%
+  left_join(exposure) %>%
+  mutate(age_cat = case_when( age >=0 & age <= 4 ~ "0 - 14",
+                              age >= 15 & age <= 49 ~ "15 - 49")) %>% 
+  mutate(age_cat = factor(age_cat,levels =  c("0 - 14", "15 - 49"))) %>%  
+  group_by(age_cat, year, region) %>% 
+  mutate(deaths = sum(deaths), 
+         exposure = sum(exposure)) %>% 
+  slice_head() %>% select(-c("age")) %>% 
+  mutate(death_prob = deaths/exposure) %>% 
+  ungroup()
+```
+
+```{r CreateRegionalMortalityPerAgeGroupPlots}
+#~~ plot  ---------------------------
+
+deathprob_regions <- function(mort) {
+  
+  x <- c("Region:", "Year:", "Death Probability:")
+  y <- c("{point.region}", "{point.year}", "{point.death_prob_pct:.4f}%")
+
+  tltip <- tooltip_table(x, y)
+
+  
+  age_range <- mort %>%
+    .['age_cat'] %>% slice_head() %>% pull()
+  
+  mort %>% 
+    filter(age_cat == as.character(age_range) ) %>%
+    # filter(year < 2000) %>%
+    mutate(death_prob_pct = round(100 * death_prob, 4)) %>%
+    hchart("line",
+           hcaes(x = year, y = death_prob_pct, group = region)) %>%
+    hc_plotOptions(line = list(marker = list(symbol = "circle", 
+                                             enabled = T, 
+                                             radius = 3))) %>%
+    hc_yAxis(title = list(text = "Average Annual Probability of Death"), 
+             labels = list(format = "{value}%")) %>% 
+    hc_xAxis(labels = list(rotation = -45)) %>%
+    hc_legend(layout = "proximate",
+              align = "right") %>%
+    hc_colors(region_colors) %>%
+    hc_exporting(enabled = TRUE,
+                 filename = "Demography_Landscapes_Plot") %>% 
+    hc_tooltip(useHTML = TRUE,
+               headerFormat = "",
+               pointFormat = tltip) %>%
+    hc_title(text = paste0("Average Annual Probability of Death, ", 
+                           "Ages ", age_range
+                           ),
+             align = "left") %>%
+    hc_subtitle(text = paste0("for each region of ", country_name,
+                               " between ", 
+                              lower_year, " and ", upper_year)) %>% 
+    hc_chart(backgroundColor = "#ebebeb") %>% 
+    hc_exporting(enabled = TRUE,
+                 filename = "Demography_Landscapes_Plot") 
+}
+
+
+deathprob_region_plots <- 
+  mort_region_age_cat %>% 
+  split(.$age_cat) %>% 
+  map( ~ deathprob_regions(.))
+```
+
+\
+\
+\
+\
+
+# REGIONAL
+
+**NOTE: Some regional recoding was necessary to harmonize the different surveys. The final regions used in each survey are shown in the plot below:**
+
+```{r RegionRecodingsFinalPlot, fig.height=6, fig.width=6}
+
+regions_plot_present
+ 
+```
+
+# Mortality trends for each region {.tabset}
+
+**The plots below show the mortality experienced by different age groups in the different regions of `r country_name`.**
+
+## 0 - 14 years
+
+```{r EmbedRegionalMortalityPerAgeGroupPlotAges0to4}
+deathprob_region_plots$`0 - 14`
+```
+
+## 15 - 49 years
+
+```{r EmbedRegionalMortalityPerAgeGroupPlotAges5to14}
+deathprob_region_plots$`15 - 49`
+```
+
+## Poisson Model
+
+The results of the Poisson regression (using age group, time period and country region as predictors) are shown below:
+
+```{r PoissonRegressionForRegionalMortality, fig.align="center"}
+
+to_regress <- 
+  mort_region_age_cat %>% 
+  mutate(year_cat = case_when( year >=1980 & year <= 1989 ~ "1980s",
+                               year >=1990 & year <= 1999 ~ "1990s",
+                               year >=2000 & year <= 2009 ~ "2000s",
+                               year >=2010 & year <= 2020 ~ "2010s", 
+                               TRUE ~ "NA")) %>%  
+  mutate(year_cat = factor(year_cat,levels =  c("1980s", "1990s", "2000s", 
+                                               "2010s"))) %>% 
+  mutate(region = as.factor(region)) %>% 
+  group_by(age_cat, year_cat, region) %>% 
+  mutate(deaths = sum(deaths), 
+         exposure = sum(exposure)) %>% 
+  slice_head() %>% select(-c("year")) %>% 
+  mutate(death_prob = deaths/exposure) %>% 
+  ungroup() %>% 
+  rename(Region = region, `Age Group` = age_cat, 
+         Period = year_cat, `Mortality Rate` = death_prob, 
+         Deaths = deaths, Region = region, Exposure = exposure)
+
+
+#~~~~~~~~~~~~~~~~~~~~~~
+#~  Rate ratio calculation function  ----
+#~~~~~~~~~~~~~~~~~~~~~~
+
+glm.RR <- function(GLM.RESULT, digits = 2) {
+
+  COEF      <- stats::coef(GLM.RESULT)
+  CONFINT   <- stats::confint(GLM.RESULT)
+  TABLE.EXP <- round(exp(cbind(coef=COEF, CONFINT)), digits)
+
+  TABLE.EXP
+}
+
+#~~~~~~~~~~~~~~~~~~~~~~
+#~  Model no interactions  ----
+#~~~~~~~~~~~~~~~~~~~~~~
+
+## Including offset(log(n)) in the right hand side
+model_1 <- glm(Deaths ~ `Age Group` + Period + Region + offset(log(Exposure)), family = poisson(link = "log"), data = to_regress)
+
+## Results from regular Poisson
+tab_model(model_1, show.reflvl = TRUE, prefix.labels = "varname")
+# 
+# ## get relative risks
+glm.RR(model_1)
+
+
+```
+
+## Data table
+
+```{r DataTableForRegionalMortality}
+
+mort_region_age_cat %>% 
+      mutate(death_prob_pct = round(100 * death_prob, 2)) %>% 
+  select(Region = region, Year = year, `Age Category` = age_cat, 
+         Deaths = deaths, Exposure = exposure,
+         `Death Prob. Percent` = death_prob_pct) %>% 
+  DT::datatable(extensions = c('Buttons'),
+                options = list(dom = "Bfrtip",
+                               buttons = c('excel', 'print'),
+                               pageLength = 10,
+                               initComplete = JS(
+                                 "function(settings, json) {",
+                                 "$(this.api().table().header()).css({'background-color': '#ebebeb', 'color': 'black'});",
+                                 "}"
+                                 )), filter = "top")
+
+```
+
+## Sources
+
+Data was sourced from the following DHS surveys for `r country_name`:
+
+```{r DataSourcesForRegionalMortality, fig.height=6, fig.width=6}
+
+resp_count <-
+  bound_dhs %>%
+  remap_regions[[country_code_DHS]]() %>% 
+  filter(!is.na(region) & region != "Dropped_region" ) %>% 
+  group_by(surveyid) %>%
+  summarise(resp_count = length(unique(caseid)))
+
+sib_count <-
+  sib_long %>%
+  remap_regions[[country_code_DHS]]() %>% 
+  filter(!is.na(region) & region != "Dropped_region" ) %>% 
+  group_by(surveyid) %>%
+  summarise(sib_count = length(unique(paste0(caseid, sib_id))))
+
+dead_count <-
+  sib_long %>%
+  remap_regions[[country_code_DHS]]() %>% 
+  filter(!is.na(region) & region != "Dropped_region" ) %>% 
+  filter(mm2 == 0) %>%
+  group_by(surveyid) %>%
+  summarise(dead_count = length(unique(paste0(caseid, sib_id))))
+
+resp_count %>%
+  left_join(sib_count) %>%
+  left_join(dead_count) %>%
+  separate(col = 1, into = c("survey","year"), sep = "_") %>%
+  mutate(phase = str_extract(survey, "[:digit:]"),
+         year = as.Date(year, format = "%y"),
+         year = year(year)) %>%
+  select(`DHS Phase` = phase,
+         Year = year,
+         `No. of Survey Respondents` = resp_count,
+         `No. of Respondents' Siblings` = sib_count,
+         `No. of Deaths Among Siblings` = dead_count) %>%
+  DT::datatable(extensions = c('Buttons'),
+                options = list(dom = "t",
+                               buttons = c('excel', 'print'),
+                               pageLength = 10,
+                               initComplete = JS(
+                                 "function(settings, json) {",
+                                 "$(this.api().table().header()).css({'background-color': '#ebebeb', 'color': 'black'});",
+                                 "}")))  
+
+```
+
+\
+\
+\
+\
+
+<!--------------------------------------->
+
+<!-------------- SUMMARY  ------------->
+
+<!--------------------------------------->
+
+Below we present the age-specific, year-specific mortality estimates for each region of `r country_name` between the years `r lower_year` and `r upper_year`.
+
+```{r BigForLoopForEachRegion, fig.width = 6 , fig.height= 3.7, fig.align= "center", results="asis"}
+
+region_list <- 
+  sib_long %>% 
+  remap_regions[[country_code_DHS]]() %>% 
+  filter(!is.na(region) & region != "Dropped_region" ) %>% 
+  pull(region) %>% unique()
+
+region_count <- length(region_list)
+region_vec <- 1:region_count
+
+
+# Initialize lists where plots will be stored for each region
+raw_plot <- list()
+smooth_plot <- list()
+data_table <- list()
+
+
+# this loop obtains mortality estimates for each region
+# then plugs them into their respective lists
+for (ith_region in region_list) {
+
+sib_long_reg <-
+  sib_long %>%
+  remap_regions[[country_code_DHS]]() %>%
+  filter(!is.na(region) & region != "Dropped_region") %>%
+  filter(region == ith_region)
+  
+deaths_regional_wide <- 
+  sib_long_reg %>% 
+  age_year_deaths(lower_age = lower_age, upper_age = upper_age, 
+                  lower_year = lower_year, upper_year = upper_year) %>% 
+  t()
+
+deaths_regional_long <- 
+  deaths_regional_wide %>% 
+  melt() %>% 
+  rename(deaths = value, Age = Var1, Year = Var2) 
+
+exposure_regional_wide <-
+  sib_long_reg %>% 
+  age_year_exposure(lower_age = lower_age, upper_age = upper_age, 
+                  lower_year = lower_year, upper_year = upper_year)  %>% 
+  t()
+
+exposure_regional_long <-
+  exposure_regional_wide %>% 
+  melt() %>% 
+  rename(exposure = value, Age = Var1, Year = Var2)
+
+
+# set weights to 0 if exposure is 0
+weights_wide <- exposure_regional_long %>% 
+  mutate(weights = ifelse(exposure == 0, 0, 1)) %>% 
+  select(weights, Age,  Year) %>% 
+  pivot_wider(id_cols = Age, names_from = Year, values_from = weights) %>% 
+  select(-Age) %>% 
+  as.matrix()
+
+## fit with BIC
+fitBIC <-
+  Mort2Dsmooth(x = c(lower_age:upper_age),
+               y = c(lower_year:upper_year),
+               Z = deaths_regional_wide,
+               offset = log(exposure_regional_wide), W = weights_wide)
+# empty df
+smoothed_estimates  <-
+  expand.grid(list(Age= c(lower_age : upper_age),
+                   Year=c(lower_year : upper_year))) %>%
+  mutate( ln_death_prob_smooth = c(fitBIC$logmortality),
+          log_death_prob_smooth = log10(exp(ln_death_prob_smooth))) %>%
+  as_tibble()
+
+
+mort_regional <- 
+  deaths_regional_long %>%
+  left_join(exposure_regional_long) %>%
+  left_join(smoothed_estimates) %>% 
+  group_by(Age, Year) %>% 
+  # death probability
+  mutate(deaths = sum(deaths), 
+         exposure = sum(exposure)) %>%
+  ungroup() %>% 
+  mutate(death_prob = deaths/exposure,
+         log_death_prob = log10(death_prob)) %>% 
+  # percentage
+  mutate(death_prob_pct = 100 * death_prob) %>%
+  # Cells with zero deaths cant be log transformed. Solution: set to minimum of the non-zeros
+  # while still using the zeros (or NAs) for the hover labels. 
+  mutate(death_prob_pct_above0 = ifelse(death_prob_pct > 0, death_prob_pct, NA)) %>% 
+  mutate(death_prob_pct_filled = ifelse(death_prob_pct == 0,
+                                 min(death_prob_pct_above0, na.rm = T),
+                                 death_prob_pct)) %>% 
+  select(-death_prob_pct_above0) %>% 
+  # fractions
+  mutate(death_prob_frac = 1 / death_prob,
+         death_prob_frac = paste("1 in" , round(death_prob_frac, 0)), 
+         death_prob_frac = ifelse((death_prob_frac == "1 in Inf"), "NA", death_prob_frac)) %>%
+  # REPEAT THE ABOVE, but for the smoothed estimates
+  # percentage
+  mutate(death_prob_smooth = exp(ln_death_prob_smooth),
+         death_prob_pct_smooth = 100 * death_prob_smooth,
+         death_prob_pct_above0_smooth = ifelse(death_prob_pct_smooth > 0, death_prob_pct_smooth, NA),
+         death_prob_pct_filled_smooth = ifelse(death_prob_pct_smooth == 0,
+                                 min(death_prob_pct_above0_smooth, na.rm = T),
+                                 death_prob_pct_smooth)) %>%
+  select(-death_prob_pct_above0_smooth) %>%
+  # fractions
+  mutate(death_prob_frac_smooth = 1 / death_prob_smooth,
+         death_prob_frac_smooth = paste("1 in" , round(death_prob_frac_smooth, 0)),
+         death_prob_frac_smooth = ifelse((death_prob_frac_smooth == "1 in Inf"), "NA", death_prob_frac_smooth))
+
+
+
+x <- c("Age:", "Year:", "Deaths:", "Exposure:", "Prob. of Death:", "(as fraction):")
+y <- c("{point.Age:.0f}", "{point.Year:.0f}", "{point.deaths:.0f}", "{point.exposure:.0f}", "{point.death_prob_pct:.2f}%", "{point.death_prob_frac}"   )
+
+tltip <- tooltip_table(x, y)
+
+mort_regional_raw_p <- 
+  mort_regional %>%
+  hchart("heatmap", hcaes(x = Year, y = Age, value = death_prob_pct_filled)) %>%
+  hc_colorAxis(stops = color_stops(10, viridisLite::magma(n = 12, end = 0.84)),
+               type = "logarithmic") %>%
+  hc_legend(layout = "horizontal",
+            verticalAlign = "top",
+            align = "left") %>%
+  hc_tooltip(useHTML = TRUE,
+             headerFormat = "",
+             pointFormat = tltip) %>%
+  hc_xAxis(labels = list(rotation = -45)) %>%
+  hc_title(text = paste0("Mortality Lexis Surface, ", ith_region),
+           align = "left") %>%
+  hc_subtitle(text = "% probability of death at that age in that year",
+              align = "left") %>% 
+  hc_chart(backgroundColor = "#E0E0E0") %>% 
+  hc_exporting(enabled = TRUE,
+               filename = "Demography_Landscapes_Plot")
+
+
+mort_regional_smooth_p <-
+  mort_regional %>%
+  hchart("heatmap", hcaes(x = Year, y = Age, value = death_prob_pct_filled_smooth)) %>%
+  hc_colorAxis(stops = color_stops(10, viridisLite::magma(n = 12, end = 0.84)),
+               type = "logarithmic") %>%
+  hc_legend(layout = "horizontal",
+            verticalAlign = "top",
+            align = "left") %>%
+  hc_tooltip(useHTML = TRUE,
+             headerFormat = "",
+             pointFormat = tltip) %>%
+  hc_xAxis(labels = list(rotation = -45)) %>%
+  hc_title(text = paste0("Mortality Lexis Surface, ",ith_region, ", (smoothed)"),
+           align = "left") %>%
+  hc_subtitle(text = "% probability of death at that age in that year",
+              align = "left") %>%
+  hc_chart(backgroundColor = "#E0E0E0") %>% 
+  hc_exporting(enabled = TRUE,
+               filename = "Demography_Landscapes_Plot")
+
+
+mort_regional_table <-
+  mort_regional %>%
+  mutate(death_prob_pct = round(death_prob_pct, 2) ,
+         death_prob_pct_smooth = round(death_prob_pct_smooth), 2) %>%
+  select(Age, Year, Deaths = deaths, `Exposure (person-years)` = exposure,
+         `Death Prob. Percent` = death_prob_pct,
+         `Death Prob. Fraction` = death_prob_frac,
+         `Death Prob. Percent (Smoothed)` = death_prob_pct_smooth,
+         `Death Prob. Fraction (Smoothed)` = death_prob_frac_smooth) %>%
+  DT::datatable(extensions = c('Buttons'),
+                options = list(dom = "Bfrtip",
+                               buttons = c('excel', 'print'),
+                               pageLength = 10,
+                               initComplete = JS(
+                                 "function(settings, json) {",
+                                 "$(this.api().table().header()).css({'background-color': 'ebebeb', 'color': 'black'});",
+                                 "}"
+                               )),
+                filter = "top")
+
+
+raw_plot[[ith_region]] <- mort_regional_raw_p
+
+smooth_plot[[ith_region]] <- mort_regional_smooth_p
+  
+data_table[[ith_region]] <- mort_regional_table
+
+}
+
+```
+
+```{r createChildRmdFiles, results='asis', echo = FALSE}
+
+dir.create(path = here("scripts/Rmd/temp_rmd"))
+
+temp_rmd_list <- list()
+
+for (region_number in region_vec) {
+
+  region_name <- region_list[[region_number]]
+  
+  temp_rmd_path <- paste0("temp_rmd/", region_name, ".Rmd")
+  temp_rmd_list[[region_name]] <- temp_rmd_path
+
+  sink(file = temp_rmd_path) # diverts R output to new file
+  cat("  \n# ", region_list[[region_number]], "{.tabset}", "  \n", 
+      # "  \n## ", "Raw estimates", "  \n", 
+      # "```{r, echo=FALSE, results = 'asis'}", "  \n",
+      # 'htmltools::tagList(raw_plot)[[1]][[region_number]]',"  \n", 
+      # "```","  \n", 
+      "  \n## ", "Spline-smoothed", "  \n",
+      "```{r, echo=FALSE, results = 'asis'}", "  \n",
+      'htmltools::tagList(smooth_plot)[[1]][[region_number]]',"  \n",
+      "```", "  \n",
+      "  \n## ", "Data Table", "  \n",
+      "```{r, echo=FALSE, results = 'asis'}", "  \n",
+      'htmltools::tagList(data_table)[[1]][[region_number]]',"  \n",
+      "```", "  \n",
+      "\ ", "  \n")
+  sink()
+  
+}
+```
+
+```{r knit_temp_rmd_files, echo=FALSE, results='asis'}
+
+for (region_number in region_vec) {
+  
+    region_name <- region_list[[region_number]]
+  
+  # Knit the temporary RMD file
+  cat(knitr::knit_child(temp_rmd_list[[region_name]],
+                        quiet = TRUE))
+
+  # Delete the temporary RMD file
+  # file.remove(temp_rmd_list[[region_name]])
+}
+
+```

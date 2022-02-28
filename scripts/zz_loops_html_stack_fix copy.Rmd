@@ -1,0 +1,49 @@
+---
+title: "Loop to Auto Build Tabs Containing htmlwidgets"
+output: html_document
+---
+
+```{r setup, echo =F, warning = F, message=F}
+library(tidyverse)
+library(highcharter)
+
+labels <- mtcars %>% names # these will serve as labels for each tab
+
+# create a bunch of random, nonsensical line graphs
+hcs <- purrr::map(.x = mtcars, ~highcharter::hchart(mtcars, y = .x, type = 'line')) %>%
+    setNames(labels) # assign names to each element to use later as tab titles
+```
+
+
+## Loop section {.tabset}
+
+<!-- loop to build each tabs (in flexdashboard syntax) -->
+<!-- each element of the list object `out` is a single tab written in rmarkdown -->
+<!-- you can see this running the next chunk and typing `cat(out[[1]])` -->
+
+```{r chunk, echo = FALSE, eval = TRUE}
+
+out <- lapply(seq_along(hcs), function(i) {
+
+  a1 <- knitr::knit_expand(text = sprintf("### %s\n", names(hcs)[i])) # tab header, auto extracts names of `hcs`
+  a2 <- knitr::knit_expand(text = "\n```{r}") # start r chunk
+  a3 <- knitr::knit_expand(text = sprintf("\nhcs[[%d]]", i)) # extract graphs by "writing" out `hcs[[1]]`, `hcs[[2]]` etc. to be rendered later
+  a4 <- knitr::knit_expand(text = "\n```\n") # end r chunk
+
+  paste(a1, a2, a3, a4, collapse = '\n') # collapse together all lines with newline separator
+
+})
+
+```
+
+<!-- As I mentioned in the SO post, I don't quite understand why it has to be -->
+<!-- 'r paste(knitr::knit(...)' vs just 'r knitr::knit(...)' but hey, it works -->
+
+```{r chunkchunk, results = "asis"}
+cat(knitr::knit(text = paste(out, collapse = '\n'), quiet = T))
+```
+
+
+<!-- `r paste(knitr::knit(text = paste(out, collapse = '\n')))` -->
+
+

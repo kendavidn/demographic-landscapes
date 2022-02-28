@@ -1,0 +1,58 @@
+---
+title: "Untitled"
+author: "Kenechukwu Nwosu"
+date: "10/28/2020"
+output:
+  rmarkdown::html_document:
+    theme: cerulean
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F, message = F, warning = F)
+library(pacman)
+
+p_load(char = c("DT",
+                "htmltools", 
+                "tidyverse",
+                "plotly",
+                "printr",
+                "pander"
+))
+```
+
+
+```{r results = "asis"}
+
+# big for loop over each species
+plot_list = lapply(1:10, function(i){ as.widget(plot_ly(iris, 
+                                       x = iris[["Sepal.Length"]],
+                                       y = iris[["Sepal.Width"]], 
+                                       mode = "markers")) } 
+                  )
+
+htmltools::tagList( lapply(1:10, 
+                            function(i) {
+                              pandoc.header(paste0("Tab",i,' {.tabset}'), 2)
+                              plot_list[[i]]
+                            } 
+                          )
+                   )
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

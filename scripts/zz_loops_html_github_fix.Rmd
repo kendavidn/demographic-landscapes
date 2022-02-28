@@ -1,0 +1,82 @@
+---
+title: "Untitled"
+author: "Kenechukwu Nwosu"
+date: "10/28/2020"
+output:
+  rmarkdown::html_document:
+    theme: cerulean
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F, message = F, warning = F)
+library(pacman)
+
+```
+
+
+```{r results = "asis"}
+
+library(plotly)
+library(htmltools)
+library(magrittr)
+
+    # make a named list of plots for demonstration
+    #  the names will be the titles for the tabs
+plots <- list(
+  "iris" = plot_ly(iris,
+                   x = iris[["Sepal.Length"]],
+                   y = iris[["Sepal.Width"]],
+                   mode = "markers"),
+  "cars" = plot_ly(cars,
+                   x = cars$speed,
+                   y = cars$dist,
+                   mode = "markers")
+)
+
+# create our top-level div for our tabs
+tags$div(
+  # create the tabs with titles as a ul with li/a
+  tags$ul(class = "nav nav-tabs",
+          role = "tablist",
+          lapply(names(plots),
+                 function(p) {
+                   tags$li(tags$a("data-toggle" = "tab",
+                                  href = paste0("#tab-", p),
+                                  p))
+                 })),
+  # fill the tabs with our plotly plots
+  tags$div(class = "tab-content",
+           lapply(names(plots),
+                  function(p) {
+                    tags$div(
+                      #  make the first tabpane active
+                      class = ifelse(p == names(plots)[1], "tab-pane active", "tab-pane"),
+                      #  id will need to match the id provided to the a href above
+                      id = paste0("tab-", p),
+                      as.widget(plots[[p]])
+                    )
+                  }))
+) %>%
+  # attach the necessary dependencies
+  #  since we are manually doing what rmarkdown magically does for us
+  attachDependencies(list(rmarkdown::html_dependency_jquery(),
+                          shiny::bootstrapLib()))
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

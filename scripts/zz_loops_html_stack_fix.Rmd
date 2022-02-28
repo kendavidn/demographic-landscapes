@@ -1,0 +1,53 @@
+---
+title: "Example"
+output: html_document
+---
+
+
+```{r create_tables}
+library(formattable)
+
+df_list <- split(x = iris,
+                 f = iris$Species)
+
+table_list <- lapply(df_list, formattable)
+```
+
+```{r create_temp_rmd_files, echo=FALSE}
+
+dir.create(path = "temp_rmd")
+
+temp_rmd_list <- list()
+
+for (table_name in names(table_list)) {
+
+  temp_rmd_path <- paste0("temp_rmd/", table_name, ".rmd")
+  temp_rmd_list[[table_name]] <- temp_rmd_path
+
+
+  sink(file = temp_rmd_path)
+  cat("  \n",
+        "### ", table_name, "  \n",
+        "```{r, echo=FALSE}", "  \n",
+        'table_list[[table_name]]',
+        "  \n",
+        "```",
+      "  \n",
+      sep = "")
+  sink()
+}
+```
+
+```{r knit_temp_rmd_files, echo=FALSE, results='asis'}
+
+for (table_name in names(table_list)) {
+
+  # Knit the temporary RMD file
+  cat(knitr::knit_child(temp_rmd_list[[table_name]],
+                        quiet = TRUE))
+
+  # Delete the temporary RMD file
+  file.remove(temp_rmd_list[[table_name]])
+}
+
+```

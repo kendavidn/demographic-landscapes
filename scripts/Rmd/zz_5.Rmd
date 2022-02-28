@@ -1,0 +1,12 @@
+
+```{r, results="asis"}
+cat("  \n##", clean_regions[[5]], "{.tabset}", "  \n")
+
+cat("  \n###", "Raw plot", "  \n")
+htmltools::tagList(raw_plot)[[1]][[5]]
+cat("  \n")
+cat("  \n###", "Smooth plot", "  \n")
+htmltools::tagList(smooth_plot)[[1]][[5]]
+cat("  \n")
+```
+
