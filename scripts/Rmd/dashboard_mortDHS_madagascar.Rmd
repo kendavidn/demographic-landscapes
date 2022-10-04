@@ -6,7 +6,7 @@ output:
     toc_depth: 2
     toc_float: true
 params: 
-  country_code_DHS: "KM"
+  country_code_DHS: "MD"
   lower_age: 0
   upper_age: 49
   surveyYearStart: 1980
@@ -418,9 +418,9 @@ bound_dhs <-
   
 
 # reshape to long
-sib_long. <- mdhs::mdhs_reshape(data = bound_dhs, sib_cols = c(1,2,4,8)) 
+sib_long. <- mortDHS::mortDHS_reshape(data = bound_dhs, sib_cols = c(1,2,4,8)) 
 # add in interview date variable. NEEDED FOR MORTALITY CALC
-sib_long <- mdhs::mdhs_merge(sib_long., bound_dhs, respondent_vars = c(individual_cols, "surveyid") ) 
+sib_long <- mortDHS::mortDHS_merge(sib_long., bound_dhs, respondent_vars = c(individual_cols, "surveyid") ) 
 # Calculate observation time
 sib_long <- 
   sib_long %>% 
@@ -435,7 +435,7 @@ sib_long <-
                          TRUE ~ NA_character_), 
          sex = as.factor(sex))
 
-sib_long$obs_time <- mdhs::mdhs_obs_time(sib_long)
+sib_long$obs_time <- mortDHS::mortDHS_obs_time(sib_long)
 
   
 
@@ -458,8 +458,6 @@ deaths_national_long <-
   deaths_national_wide %>% 
   melt() %>% 
   rename(deaths = value, Age = Var1, Year = Var2) 
-
-
 
 exposure_national_wide <-
   sib_long %>% 
